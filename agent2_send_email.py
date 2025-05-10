@@ -1,3 +1,4 @@
+import streamlit as st
 import smtplib
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
@@ -6,22 +7,21 @@ import base64
 from google.auth.transport.requests import Request
 from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
-from dotenv import load_dotenv
 import json
 import google.generativeai as genai
 import os
 import datetime
 
-# Load .env file
-load_dotenv()
+# Use Streamlit Secrets for sensitive information
+GOOGLE_API_KEY = st.secrets["GOOGLE_API_KEY"]
+TO_EMAIL = st.secrets["TO_EMAIL"]
+CLIENT_SECRET_JSON = st.secrets["CLIENT_SECRET_JSON"]
 
 # Configure Gemini
-genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
-model = genai.GenerativeModel("gemini-1.5-flash")
+genai.configure(api_key=GOOGLE_API_KEY)
 
 # Gmail API setup
 SCOPES = ['https://www.googleapis.com/auth/gmail.send']
-CLIENT_SECRET_FILE = 'client_secret_573959129688-g8rsclts9c0d1c7pl562k0o3l1c93sku.apps.googleusercontent.com.json'
 
 
 def authenticate_gmail():
@@ -33,7 +33,10 @@ def authenticate_gmail():
         if creds and creds.expired and creds.refresh_token:
             creds.refresh(Request())
         else:
-            flow = InstalledAppFlow.from_client_secrets_file(CLIENT_SECRET_FILE, SCOPES)
+            # Use client secret JSON from Streamlit secrets
+            with open("client_secret.json", "w") as f:
+                f.write(CLIENT_SECRET_JSON)
+            flow = InstalledAppFlow.from_client_secrets_file("client_secret.json", SCOPES)
             creds = flow.run_local_server(port=0)
         with open('token.pickle', 'wb') as token:
             pickle.dump(creds, token)
@@ -49,7 +52,7 @@ def send_email_via_gmail(subject, body, to_email):
 
     raw_message = base64.urlsafe_b64encode(message.as_bytes()).decode()
     service.users().messages().send(userId='me', body={'raw': raw_message}).execute()
-    print("📤 Email sent successfully")
+    st.success("📤 Email sent successfully")
 
 
 def generate_email_content(problem_title, problem_link, prev_difficulty, day_of_week, user_behavior, is_revision=False):
@@ -110,7 +113,7 @@ Write:
         response = model.generate_content(prompt)
         return subject, response.text.strip()
     except Exception as e:
-        print("⚠️ Gemini API failed:", str(e))
+        st.error(f"⚠️ Gemini API failed: {str(e)}")
         fallback = f"Here's your problem of the day: {problem_title}\n{problem_link}"
         return subject, fallback
 
@@ -127,10 +130,6 @@ def create_and_send_email_from_json():
         is_revision = "revision" in data.get("Tag", "").lower()
         day_of_week = datetime.datetime.now().strftime("%A")
 
-        to_email = os.getenv("TO_EMAIL")
-        if not to_email:
-            raise ValueError("❌ Missing TO_EMAIL in .env")
-
         subject, email_body = generate_email_content(
             problem_title=problem_title,
             problem_link=problem_link,
@@ -140,13 +139,15 @@ def create_and_send_email_from_json():
             is_revision=is_revision
         )
 
-        send_email_via_gmail(subject=subject, body=email_body, to_email=to_email)
+        send_email_via_gmail(subject=subject, body=email_body, to_email=TO_EMAIL)
 
     except FileNotFoundError:
-        print("❌ selected_problem.json not found.")
+        st.error("❌ selected_problem.json not found.")
     except Exception as e:
-        print(f"❌ Error: {e}")
+        st.error(f"❌ Error: {e}")
 
 
 if __name__ == "__main__":
-    create_and_send_email_from_json()
+    st.title("Send DSA Problem Email")
+    if st.button("Send Email"):
+        create_and_send_email_from_json()
