@@ -1,3 +1,4 @@
+import streamlit as st
 from dotenv import load_dotenv
 import os
 import pandas as pd
@@ -119,15 +120,18 @@ def save_selected_problem(problem_title, problem_link, prev_difficulty, recent_t
     with open("selected_problem.json", "w") as f:
         json.dump(data, f, indent=4)
 
-if __name__ == "__main__":
-    print("Did you solve Today's problem?")
-    previous_title = input("Enter the problem you solved previously: ")
-    prev_difficulty = input("Enter its difficulty (Easy/Medium/Hard): ")
-    time_taken = input("How much time did you take (e.g., 30 mins): ")
-    completed = input("Did you complete the problem? (yes/no): ").lower()
-    recent_tags = input("Enter tags (comma-separated) for that problem: ").split(",")
-    date_attempted = input("Enter the date (YYYY-MM-DD): ")
+st.title("Coading Coach")
 
+# Streamlit inputs
+st.header("Previous Problem Details")
+previous_title = st.text_input("Enter the problem you solved previously:")
+prev_difficulty = st.selectbox("Enter its difficulty:", ["Easy", "Medium", "Hard"])
+time_taken = st.text_input("How much time did you take (e.g., 30 mins):")
+completed = st.radio("Did you complete the problem?", ["yes", "no"])
+recent_tags = st.text_input("Enter tags (comma-separated) for that problem:").split(",")
+date_attempted = st.date_input("Enter the date:", datetime.now()).strftime("%Y-%m-%d")
+
+if st.button("Save Previous Attempt"):
     previous_attempt = {
         "Title": previous_title,
         "Difficulty": prev_difficulty,
@@ -138,7 +142,7 @@ if __name__ == "__main__":
     }
 
     append_to_history(previous_attempt)
-    print("📝 Saved previous attempt.")
+    st.success("📝 Saved previous attempt.")
 
     with open("all_attempts.json", "r") as f:
         all_attempts = json.load(f)
@@ -178,16 +182,15 @@ if __name__ == "__main__":
             completed
         )
 
-        print("✅ Agent 1 saved problem to JSON")
-        print(json.dumps(parsed, indent=4))
+        st.success("✅ Problem selected and saved to JSON")
+        st.json(parsed)
 
-        print("⏳ Waiting 30 seconds before sending the email...")
-        time.sleep(30)
-
-        # Run the email-sending script
-        print("📬 Triggering agent2_send_email.py...")
-        subprocess.run(["python", "agent2_send_email.py"])
+        if st.button("Send Email"):
+            st.info("⏳ Sending email...")
+            subprocess.run(["python", "agent2_send_email.py"])
+            st.success("📬 Email sent successfully!")
 
     except Exception as e:
-        print("❌ Failed to parse AI response:", str(e))
-        print("Raw response:\n", ai_response)
+        st.error(f"❌ Failed to parse AI response: {str(e)}")
+        st.text("Raw response:")
+        st.text(ai_response)
