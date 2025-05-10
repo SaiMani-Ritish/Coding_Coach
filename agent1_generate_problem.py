@@ -71,29 +71,51 @@ def append_to_history(new_entry, filename="all_attempts.json"):
         json.dump(data, f, indent=4)
 
 def get_problem_link_by_title(title, df):
-    titles = df["Title"].tolist()
-    close = get_close_matches(title, titles, n=1, cutoff=0.6)
-    if close:
-        match = df[df["Title"] == close[0]].iloc[0]
-        return match["Leetcode Question Link"], match["Title"], True
-    return "https://leetcode.com", title, False
+    try:
+        # Normalize both input and DataFrame titles for better matching
+        title = title.lower().strip()
+        df = df.copy()  # Create a copy to avoid modifying original DataFrame
+        df["normalized_title"] = df["Title"].str.lower().str.strip()
+        
+        titles = df["normalized_title"].tolist()
+        close = get_close_matches(title, titles, n=1, cutoff=0.6)
+        
+        if close:
+            match_row = df[df["normalized_title"] == close[0]].iloc[0]
+            return match_row["Leetcode Question Link"], match_row["Title"], True
+        
+        return "https://leetcode.com", title, False
+    except Exception as e:
+        st.error(f"Error matching problem title: {str(e)}")
+        return "https://leetcode.com", title, False
 
 def check_revision_needed(attempts, df):
-    today = datetime.now().date()
-    for attempt in attempts:
-        if attempt["Completed"] == "yes":
-            try:
-                date_solved = datetime.strptime(attempt["date_attempted"], "%Y-%m-%d").date()
-                if (today - date_solved).days == 7:
-                    link = attempt.get("Leetcode Question Link", "").strip()
-                    if not link:
-                        link, matched_title, found = get_problem_link_by_title(attempt["Title"], df)
-                        attempt["Title"] = matched_title
-                        attempt["Leetcode Question Link"] = link
-                    return attempt
-            except:
-                continue
-    return None
+    try:
+        today = datetime.now().date()
+        for attempt in attempts:
+            if attempt["Completed"] == "yes":
+                try:
+                    date_solved = datetime.strptime(attempt["date_attempted"], "%Y-%m-%d").date()
+                    days_diff = (today - date_solved).days
+                    
+                    if days_diff == 7:
+                        link = attempt.get("Leetcode Question Link", "").strip()
+                        if not link:
+                            link, matched_title, found = get_problem_link_by_title(attempt["Title"], df)
+                            if found:
+                                attempt["Title"] = matched_title
+                                attempt["Leetcode Question Link"] = link
+                                st.info(f"Found revision problem: {matched_title}")
+                            else:
+                                st.warning(f"Could not find exact match for: {attempt['Title']}")
+                        return attempt
+                except ValueError as e:
+                    st.warning(f"Invalid date format for attempt: {attempt['Title']}")
+                    continue
+        return None
+    except Exception as e:
+        st.error(f"Error checking revision problems: {str(e)}")
+        return None
 
 def pick_problem_with_ai(df, prev_title, prev_difficulty, recent_tags, completed, date_attempted, all_attempts):
     revision_problem = check_revision_needed(all_attempts, df)
