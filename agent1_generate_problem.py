@@ -28,32 +28,64 @@ SCOPES = ['https://www.googleapis.com/auth/gmail.send']
 
 def authenticate_gmail():
     creds = None
-    if os.path.exists('token.pickle'):
-        with open('token.pickle', 'rb') as token:
-            creds = pickle.load(token)
-    if not creds or not creds.valid:
-        if creds and creds.expired and creds.refresh_token:
-            creds.refresh(Request())
-        else:
-            # Use client secret JSON from Streamlit secrets
-            with open("client_secret.json", "w") as f:
-                f.write(CLIENT_SECRET_JSON)
-            flow = InstalledAppFlow.from_client_secrets_file("client_secret.json", SCOPES)
-            creds = flow.run_local_server(port=0)
-        with open('token.pickle', 'wb') as token:
-            pickle.dump(creds, token)
-    return creds
+    token_path = 'token.pickle'
+    
+    try:
+        if os.path.exists(token_path):
+            with open(token_path, 'rb') as token:
+                creds = pickle.load(token)
+                
+        if not creds or not creds.valid:
+            if creds and creds.expired and creds.refresh_token:
+                creds.refresh(Request())
+            else:
+                # Write client secrets from Streamlit secrets
+                client_secret_file = "client_secret.json"
+                with open(client_secret_file, "w") as f:
+                    json.dump(json.loads(st.secrets["CLIENT_SECRET_JSON"]), f)
+                
+                flow = InstalledAppFlow.from_client_secrets_file(client_secret_file, SCOPES)
+                creds = flow.run_local_server(port=0)
+                
+                # Save the credentials
+                with open(token_path, 'wb') as token:
+                    pickle.dump(creds, token)
+                    
+                # Clean up client secret file
+                if os.path.exists(client_secret_file):
+                    os.remove(client_secret_file)
+                    
+        return creds
+    except Exception as e:
+        st.error(f"Authentication Error: {str(e)}")
+        return None
 
 def send_email_via_gmail(subject, body, to_email):
-    service = build('gmail', 'v1', credentials=authenticate_gmail())
-    message = MIMEMultipart()
-    message['to'] = to_email
-    message['subject'] = subject
-    message.attach(MIMEText(body, 'plain'))
+    try:
+        creds = authenticate_gmail()
+        if not creds:
+            st.error("Failed to authenticate with Gmail")
+            return False
+            
+        service = build('gmail', 'v1', credentials=creds)
+        message = MIMEMultipart()
+        message['to'] = to_email
+        message['subject'] = subject
+        message['from'] = st.secrets.get("FROM_EMAIL", "me")
+        message.attach(MIMEText(body, 'plain'))
 
-    raw_message = base64.urlsafe_b64encode(message.as_bytes()).decode()
-    service.users().messages().send(userId='me', body={'raw': raw_message}).execute()
-    st.success("📤 Email sent successfully")
+        raw_message = base64.urlsafe_b64encode(message.as_bytes()).decode()
+        try:
+            service.users().messages().send(userId='me', body={'raw': raw_message}).execute()
+            st.success("📤 Email sent successfully")
+            return True
+        except Exception as e:
+            st.error(f"Failed to send email: {str(e)}")
+            return False
+            
+    except Exception as e:
+        st.error(f"Email Error: {str(e)}")
+        return False
 
 def load_problems(csv_file):
     return pd.read_csv(csv_file)
@@ -316,7 +348,8 @@ if st.button("Save Previous Attempt"):
                 user_behavior=user_behavior,
                 is_revision=is_revision
             )
-            send_email_via_gmail(subject=subject, body=email_body, to_email=TO_EMAIL)
+            if not send_email_via_gmail(subject=subject, body=email_body, to_email=TO_EMAIL):
+                st.error("Please check your Gmail authentication settings in Streamlit secrets")
 
     except Exception as e:
         st.error(f"❌ Failed to parse AI response: {str(e)}")
