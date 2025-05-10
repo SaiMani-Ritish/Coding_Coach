@@ -34,27 +34,33 @@ def authenticate_gmail():
         if os.path.exists(token_path):
             with open(token_path, 'rb') as token:
                 creds = pickle.load(token)
-                
+        
         if not creds or not creds.valid:
             if creds and creds.expired and creds.refresh_token:
                 creds.refresh(Request())
             else:
-                # Write client secrets from Streamlit secrets
-                client_secret_file = "client_secret.json"
-                with open(client_secret_file, "w") as f:
-                    json.dump(json.loads(st.secrets["CLIENT_SECRET_JSON"]), f)
-                
-                flow = InstalledAppFlow.from_client_secrets_file(client_secret_file, SCOPES)
-                creds = flow.run_local_server(port=0)
-                
-                # Save the credentials
-                with open(token_path, 'wb') as token:
-                    pickle.dump(creds, token)
+                st.warning("Gmail authentication required. Click the button below to authenticate.")
+                if st.button("Authenticate Gmail"):
+                    # Write client secrets from Streamlit secrets
+                    client_secret_file = "client_secret.json"
+                    with open(client_secret_file, "w") as f:
+                        json.dump(json.loads(st.secrets["CLIENT_SECRET_JSON"]), f)
                     
-                # Clean up client secret file
-                if os.path.exists(client_secret_file):
-                    os.remove(client_secret_file)
+                    flow = InstalledAppFlow.from_client_secrets_file(client_secret_file, SCOPES)
+                    creds = flow.run_local_server(port=0)
                     
+                    # Save the credentials
+                    with open(token_path, 'wb') as token:
+                        pickle.dump(creds, token)
+                    
+                    # Clean up client secret file
+                    if os.path.exists(client_secret_file):
+                        os.remove(client_secret_file)
+                    
+                    st.success("Authentication successful! You can now send emails.")
+                    st.experimental_rerun()
+                return None
+                
         return creds
     except Exception as e:
         st.error(f"Authentication Error: {str(e)}")
@@ -76,7 +82,7 @@ def send_email_via_gmail(subject, body, to_email):
 
         raw_message = base64.urlsafe_b64encode(message.as_bytes()).decode()
         try:
-            service.users().messages().send(userId='me', body={'raw': raw_message}).execute()
+            service.user().messages().send(userId='me', body={'raw': raw_message}).execute()
             st.success("📤 Email sent successfully")
             return True
         except Exception as e:
@@ -273,7 +279,17 @@ Write:
         fallback = f"Here's your problem of the day: {problem_title}\n{problem_link}"
         return subject, fallback
 
+# Add this near the top of your Streamlit UI code, before other UI elements
+def check_gmail_auth():
+    if not os.path.exists('token.pickle'):
+        st.warning("⚠️ Gmail authentication is required to send emails")
+        if st.button("Setup Gmail Authentication"):
+            authenticate_gmail()
+
 st.title("Coding Coach")
+
+# Add Gmail authentication check
+check_gmail_auth()
 
 # Streamlit inputs
 st.header("Previous Problem Details")
