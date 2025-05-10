@@ -10,9 +10,12 @@ from difflib import get_close_matches
 import time
 import subprocess
 
-# Load .env file for API key
-load_dotenv()
-genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
+# Use Streamlit Secrets for sensitive information
+GOOGLE_API_KEY = st.secrets["GOOGLE_API_KEY"]
+TO_EMAIL = st.secrets["TO_EMAIL"]
+
+# Configure the API key
+genai.configure(api_key=GOOGLE_API_KEY)
 model = genai.GenerativeModel("gemini-1.5-flash")
 
 # Load LeetCode CSV
